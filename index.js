@@ -1,4 +1,4 @@
-console.log("🔥 STARTING BOT...");
+console.log("BOT INICIANDO...");
 
 const { Client, GatewayIntentBits } = require("discord.js");
 
@@ -7,7 +7,7 @@ const client = new Client({
 });
 
 client.once("ready", () => {
-  console.log("🟢 BOT ONLINE:", client.user.tag);
+  console.log("BOT ONLINE:", client.user.tag);
 });
 
 client.login(process.env.TOKEN);
