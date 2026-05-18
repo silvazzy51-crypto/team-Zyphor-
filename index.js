@@ -1,46 +1,45 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, PermissionsBitField, REST, Routes, SlashCommandBuilder } = require('discord.js');
 
 const client = new Client({ 
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers] 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent, 
+        GatewayIntentBits.GuildMembers
+    ] 
 });
 
-const configServidor = { antiLink: false, antiSpam: false, antiRaid: false };
-const msgDoUsuario = new Map();
+let configServidor = { antiLink: true, antiSpam: true, antiRaid: true };
+const spamMap = new Map();
 
-// --- REGISTRO DO COMANDO /SETUP ---
 const commands = [
-    new SlashCommandBuilder()
-        .setName('setup')
-        .setDescription('Abre o painel de segurança do servidor')
-        .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-].map(command => command.toJSON());
+    new SlashCommandBuilder().setName('setup').setDescription('Painel de segurança').setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
+    new SlashCommandBuilder().setName('ban').setDescription('Bane um usuário').addUserOption(o => o.setName('alvo').setRequired(true).setDescription('Usuário')).setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers),
+    new SlashCommandBuilder().setName('kick').setDescription('Expulsa um usuário').addUserOption(o => o.setName('alvo').setRequired(true).setDescription('Usuário')).setDefaultMemberPermissions(PermissionsBitField.Flags.KickMembers),
+    new SlashCommandBuilder().setName('lockdown').setDescription('Bloqueia chat').setDefaultMemberPermissions(PermissionsBitField.Flags.ManageChannels),
+    new SlashCommandBuilder().setName('unlockdown').setDescription('Desbloqueia chat').setDefaultMemberPermissions(PermissionsBitField.Flags.ManageChannels)
+].map(c => c.toJSON());
 
 client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    try {
-        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('✅ Comando /setup registrado com sucesso!');
-    } catch (error) { console.error(error); }
-    console.log(`📱 Bot online como ${client.user.tag}!`);
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    console.log('✅ Bot online e comandos registrados!');
 });
 
-// --- PAINEL INTERATIVO ---
 client.on('interactionCreate', async (interaction) => {
-    if (interaction.isChatInputCommand() && interaction.commandName === 'setup') {
-        const embed = new EmbedBuilder()
-            .setTitle('🛡️ Painel de Segurança')
-            .setDescription(`🔗 Anti-Link: ${configServidor.antiLink ? '🟢 ON' : '🔴 OFF'}\n⚠️ Anti-Spam: ${configServidor.antiSpam ? '🟢 ON' : '🔴 OFF'}\n🔨 Anti-Raid: ${configServidor.antiRaid ? '🟢 ON' : '🔴 OFF'}`)
-            .setColor('#2b2d31');
-
-        const menu = new StringSelectMenuBuilder()
-            .setCustomId('menu_setup')
-            .addOptions([
-                { label: 'Alternar Anti-Link', value: 'link' },
-                { label: 'Alternar Anti-Spam', value: 'spam' },
-                { label: 'Alternar Anti-Raid', value: 'raid' }
-            ]);
-
-        await interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+    if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === 'setup') {
+            const embed = new EmbedBuilder().setTitle('🛡️ Painel de Segurança').setColor('#2b2d31')
+                .setDescription(`🔗 Anti-Link: ${configServidor.antiLink ? '🟢 ATIVO' : '🔴 DESATIVADO'}\n⚠️ Anti-Spam: ${configServidor.antiSpam ? '🟢 ATIVO' : '🔴 DESATIVADO'}\n🔨 Anti-Raid: ${configServidor.antiRaid ? '🟢 ATIVO' : '🔴 DESATIVADO'}`);
+            const menu = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('menu_setup').addOptions([
+                { label: 'Alternar Anti-Link', value: 'link' }, { label: 'Alternar Anti-Spam', value: 'spam' }, { label: 'Alternar Anti-Raid', value: 'raid' }
+            ]));
+            await interaction.reply({ embeds: [embed], components: [menu], ephemeral: true });
+        }
+        else if (interaction.commandName === 'ban') { await interaction.guild.members.ban(interaction.options.getUser('alvo')); await interaction.reply('🔨 Usuário banido.'); }
+        else if (interaction.commandName === 'kick') { await interaction.guild.members.kick(interaction.options.getUser('alvo')); await interaction.reply('👢 Usuário expulso.'); }
+        else if (interaction.commandName === 'lockdown') { await interaction.channel.permissionOverwrites.edit(interaction.guild.id, { SendMessages: false }); await interaction.reply('🔒 Chat bloqueado.'); }
+        else if (interaction.commandName === 'unlockdown') { await interaction.channel.permissionOverwrites.edit(interaction.guild.id, { SendMessages: true }); await interaction.reply('🔓 Chat desbloqueado.'); }
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId === 'menu_setup') {
@@ -48,22 +47,39 @@ client.on('interactionCreate', async (interaction) => {
         if (val === 'link') configServidor.antiLink = !configServidor.antiLink;
         if (val === 'spam') configServidor.antiSpam = !configServidor.antiSpam;
         if (val === 'raid') configServidor.antiRaid = !configServidor.antiRaid;
+        await interaction.update({ content: `✅ Configuração atualizada!`, components: [] });
+    }
+});
+
+client.on('messageCreate', async (m) => {
+    if (m.author.bot || !m.guild) return;
+
+    // --- ANTI-LINK ---
+    if (configServidor.antiLink && (m.content.includes('http') || m.content.includes('discord.gg'))) {
+        await m.delete().catch(() => {});
+        return;
+    }
+
+    // --- ANTI-SPAM ---
+    if (configServidor.antiSpam && !m.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        const user = m.author.id;
+        const agora = Date.now();
+        const info = spamMap.get(user) || { count: 0, last: agora };
         
-        await interaction.update({ content: '✅ Configuração atualizada!', components: [] });
+        if (agora - info.last < 3000) info.count++; else info.count = 1;
+        info.last = agora;
+        spamMap.set(user, info);
+
+        if (info.count > 3) {
+            await m.member.timeout(60000, 'Spam detectado').catch(() => {});
+            spamMap.delete(user);
+        }
     }
 });
 
-// --- SISTEMAS DE PROTEÇÃO (Mantidos iguais) ---
-client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.guild || message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
-    if (configServidor.antiLink && (message.content.includes('discord.gg/') || message.content.includes('http'))) {
-        await message.delete().catch(() => {});
-    }
-});
-
-client.on('guildMemberAdd', async (member) => {
-    if (configServidor.antiRaid && (Date.now() - member.user.createdAt) / (1000 * 60 * 60 * 24) < 2) {
-        await member.kick('Conta muito nova (Anti-Raid)').catch(() => {});
+client.on('guildMemberAdd', async (m) => {
+    if (configServidor.antiRaid && (Date.now() - m.user.createdAt) / (1000 * 60 * 60 * 24) < 2) {
+        await m.kick('Anti-Raid: Conta muito nova').catch(() => {});
     }
 });
 
