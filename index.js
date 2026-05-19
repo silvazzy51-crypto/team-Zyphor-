@@ -4,15 +4,17 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
-// Banco de dados temporário na memória do bot
+// Configurações salvas na memória do bot
 const serverConfig = {
     antilink: false,
-    antiraid: false
+    antiraid: false,
+    adminRoleId: null // Aqui vai ficar o ID do cargo que você escolher pelo /setup
 };
 
 const commands = [
     new SlashCommandBuilder().setName('ping').setDescription('Responde Pong!'),
-    new SlashCommandBuilder().setName('setupmod').setDescription('Abre o painel de configuração do sistema de segurança'),
+    new SlashCommandBuilder().setName('setup').setDescription('Configura o cargo de Administrador do bot').addRoleOption(o => o.setName('cargo').setDescription('O cargo que poderá usar o bot').setRequired(true)),
+    new SlashCommandBuilder().setName('painel').setDescription('Abre o painel de configuração do sistema de segurança'),
     new SlashCommandBuilder().setName('banmod').setDescription('Bane um usuário do servidor').addUserOption(o => o.setName('usuario').setDescription('O usuário a ser banido').setRequired(true)),
     new SlashCommandBuilder().setName('kickmod').setDescription('Expulsa um usuário do servidor').addUserOption(o => o.setName('usuario').setDescription('O usuário a ser expulso').setRequired(true))
 ];
@@ -22,13 +24,24 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         await rest.put(Routes.applicationGuildCommands('1504950960777068584', '1501445052168278016'), { body: commands });
-        console.log('✅ Comandos de segurança sincronizados!');
+        console.log('✅ Todos os comandos sincronizados com segurança!');
     } catch (error) {
         console.error(error);
     }
 });
 
-// FUNÇÃO DO PAINEL DE CONTROLE (/setupmod)
+// Função para verificar se quem usou o comando tem permissão
+function temPermissao(member) {
+    // Se o dono do servidor usar, ele sempre tem permissão
+    if (member.id === member.guild.ownerId) return true;
+    
+    // Se você já configurou um cargo no /setup, verifica se a pessoa tem esse cargo
+    if (serverConfig.adminRoleId && member.roles.cache.has(serverConfig.adminRoleId)) return true;
+    
+    // Caso contrário, apenas quem tem a permissão nativa de Administrador do Discord pode usar
+    return member.permissions.has('Administrator');
+}
+
 function gerarPainel() {
     const embed = new EmbedBuilder()
         .setTitle('🛡️ Painel de Segurança - Moderação')
@@ -55,12 +68,23 @@ function gerarPainel() {
 }
 
 client.on('interactionCreate', async (i) => {
-    // Responder aos Comandos Slash
     if (i.isChatInputCommand()) {
-        if (i.commandName === 'ping') await i.reply('Pong! 🏓');
+        if (i.commandName === 'ping') return await i.reply('Pong! 🏓');
+
+        // Bloqueia qualquer outro comando se a pessoa não for Admin cadastrado
+        if (!temPermissao(i.member)) {
+            return await i.reply({ content: '❌ Você não tem permissão para usar os comandos deste bot!', ephemeral: true });
+        }
+
+        // COMANDO /SETUP (Define o cargo de Admin)
+        if (i.commandName === 'setup') {
+            const cargo = i.options.getRole('cargo');
+            serverConfig.adminRoleId = cargo.id;
+            return await i.reply(`✅ Sucesso! Agora apenas membros com o cargo **${cargo.name}** (e o Dono) podem gerenciar este bot.`);
+        }
         
-        if (i.commandName === 'setupmod') {
-            await i.reply(gerarPainel());
+        if (i.commandName === 'painel') {
+            return await i.reply(gerarPainel());
         }
         
         if (i.commandName === 'banmod') {
@@ -69,7 +93,7 @@ client.on('interactionCreate', async (i) => {
                 await i.guild.members.ban(user);
                 await i.reply(`✅ O usuário ${user.tag} foi banido com sucesso!`);
             } catch {
-                await i.reply({ content: '❌ Não consegui banir este usuário. Verifique se meu cargo está acima do dele.', ephemeral: true });
+                await i.reply({ content: '❌ Erro ao banir. Verifique se meu cargo está acima do dele.', ephemeral: true });
             }
         }
         
@@ -79,62 +103,53 @@ client.on('interactionCreate', async (i) => {
                 await i.guild.members.kick(user);
                 await i.reply(`✅ O usuário ${user.tag} foi expulso com sucesso!`);
             } catch {
-                await i.reply({ content: '❌ Não consegui expulsar este usuário. Verifique se meu cargo está acima do dele.', ephemeral: true });
+                await i.reply({ content: '❌ Erro ao expulsar. Verifique se meu cargo está acima do dele.', ephemeral: true });
             }
         }
     }
 
-    // Responder aos Cliques nos Botões do Painel
     if (i.isButton()) {
-        // Verificar se quem clicou tem permissão de Administrador
-        if (!i.member.permissions.has('Administrator')) {
-            return i.reply({ content: '❌ Apenas administradores podem mexer no painel!', ephemeral: true });
+        // Bloqueia os botões para quem não é Admin cadastrado
+        if (!temPermissao(i.member)) {
+            return i.reply({ content: '❌ Você não tem permissão para usar esses botões!', ephemeral: true });
         }
 
         if (i.customId === 'toggle_link') serverConfig.antilink = !serverConfig.antilink;
         if (i.customId === 'toggle_raid') serverConfig.antiraid = !serverConfig.antiraid;
 
-        // Atualiza a mensagem com o novo estado (Verde/Vermelho)
         await i.update(gerarPainel());
     }
 });
 
-// MONITOR DE MENSAGENS (SISTEMA ANTI-LINK AUTOMÁTICO)
+// ANTI-LINK
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
-
     if (serverConfig.antilink) {
-        // Ignorar se o membro for Administrador para ele poder postar links
-        if (message.member.permissions.has('Administrator')) return;
-
-        // Expressão regular que detecta links (http, https, www, .com, discord.gg, etc)
+        if (temPermissao(message.member)) return; // Admins cadastrados podem enviar links
         const regexLink = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|(discord\.gg\/[^\s]+)/gi;
-
         if (regexLink.test(message.content)) {
             try {
                 await message.delete();
-                const aviso = await message.channel.send(`⚠️ ${message.author}, **links não são permitidos** neste servidor com o Anti-Link ativado!`);
-                setTimeout(() => aviso.delete().catch(() => {}), 5000); // Apaga o aviso depois de 5 segundos
+                const aviso = await message.channel.send(`⚠️ ${message.author}, links não são permitidos aqui!`);
+                setTimeout(() => aviso.delete().catch(() => {}), 5000);
             } catch (err) {
-                console.error('Erro ao deletar link:', err);
+                console.error(err);
             }
         }
     }
 });
 
-// MONITOR DE ENTRADAS (SISTEMA ANTI-RAID AUTOMÁTICO)
+// ANTI-RAID
 client.on('guildMemberAdd', async (member) => {
     if (serverConfig.antiraid) {
-        // Conta criada há menos de 5 dias é considerada suspeita em Raid
         const contaNovaMs = 1000 * 60 * 60 * 24 * 5; 
         const idadeConta = Date.now() - member.user.createdTimestamp;
-
         if (idadeConta < contaNovaMs) {
             try {
-                await member.send(`Olá! Você foi expulso do servidor **${member.guild.name}** porque o sistema Anti-Raid está ativado e sua conta é muito recente (menos de 5 dias).`).catch(() => {});
-                await member.kick('Anti-Raid Ativado: Conta muito recente');
+                await member.send(`Você foi expulso de **${member.guild.name}** pelo Anti-Raid (Conta com menos de 5 dias).`).catch(() => {});
+                await member.kick('Anti-Raid: Conta muito recente');
             } catch (err) {
-                console.error('Erro no Anti-Raid ao expulsar:', err);
+                console.error(err);
             }
         }
     }
