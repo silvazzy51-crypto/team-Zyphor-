@@ -1,8 +1,7 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionsBitField } = require('discord.js');
-const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 
 const client = new Client({ 
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildVoiceStates] 
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
 // Configurações salvas na memória do bot
@@ -25,8 +24,6 @@ const commands = [
         .addStringOption(o => o.setName('titulo').setDescription('Título do embed').setRequired(true))
         .addStringOption(o => o.setName('descricao').setDescription('Descrição do embed').setRequired(true))
         .addStringOption(o => o.setName('foto').setDescription('Link URL da imagem/foto (Opcional)').setRequired(false)),
-    new SlashCommandBuilder().setName('call').setDescription('Faz o bot entrar na sua call atual (Mutado e Ensurdecido)'),
-    new SlashCommandBuilder().setName('leave').setDescription('Faz o bot sair da call'),
     new SlashCommandBuilder().setName('painel').setDescription('Abre o painel de configuração do sistema de segurança'),
     new SlashCommandBuilder().setName('stop').setDescription('Ativa o filtro: apaga todas as mensagens comuns enviadas no servidor'),
     new SlashCommandBuilder().setName('start').setDescription('Desativa o filtro de mensagens e libera o chat'),
@@ -40,7 +37,6 @@ client.once('ready', async () => {
     console.log(`✅ Bot conectado com sucesso como ${client.user.tag}`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
-        // Envia os comandos globais para a API do Discord
         await rest.put(Routes.applicationGuildCommands('1504950960777068584', '1501445052168278016'), { body: commands });
         console.log('✅ Todos os comandos sincronizados com o Discord!');
     } catch (error) {
@@ -113,35 +109,6 @@ client.on('interactionCreate', async (i) => {
                 }
             }
             return await i.editReply({ embeds: [embed] });
-        }
-
-        if (i.commandName === 'call') {
-            const canal = i.member.voice.channel;
-            if (!canal) return await i.editReply('❌ Você precisa estar em um canal de voz!');
-            
-            try {
-                joinVoiceChannel({
-                    channelId: canal.id,
-                    guildId: canal.guild.id,
-                    adapterCreator: canal.guild.voiceAdapterCreator,
-                    selfMute: true,
-                    selfDeaf: true
-                });
-                return await i.editReply(`✅ Entrei e fiquei em silêncio no canal de voz **${canal.name}**!`);
-            } catch (err) {
-                console.error(err);
-                return await i.editReply('❌ Ocorreu um erro ao tentar entrar na call.');
-            }
-        }
-
-        if (i.commandName === 'leave') {
-            const connection = getVoiceConnection(i.guild.id);
-            if (connection) {
-                connection.destroy();
-                return await i.editReply('✅ Saí do canal de voz.');
-            } else {
-                return await i.editReply('❌ Eu não estou em nenhum canal de voz.');
-            }
         }
         
         if (i.commandName === 'painel') return await i.editReply(gerarPainel());
