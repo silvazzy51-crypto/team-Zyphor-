@@ -23,8 +23,8 @@ const commands = [
     new SlashCommandBuilder().setName('embed').setDescription('Cria uma mensagem embed personalizada')
         .addStringOption(o => o.setName('titulo').setDescription('Título do embed').setRequired(true))
         .addStringOption(o => o.setName('descricao').setDescription('Descrição do embed').setRequired(true))
-        .addStringOption(o => o.setName('foto').setDescription('Link URL da imagem/foto (Opcional)').setRequired(false)), // Nova opção de foto!
-    new SlashCommandBuilder().setName('call').setDescription('Faz o bot entrar na sua call atual'),
+        .addStringOption(o => o.setName('foto').setDescription('Link URL da imagem/foto (Opcional)').setRequired(false)),
+    new SlashCommandBuilder().setName('call').setDescription('Faz o bot entrar na sua call atual (Mutado e Ensurdecido)'),
     new SlashCommandBuilder().setName('leave').setDescription('Faz o bot sair da call'),
     new SlashCommandBuilder().setName('painel').setDescription('Abre o painel de configuração do sistema de segurança'),
     new SlashCommandBuilder().setName('stop').setDescription('Ativa o filtro: apaga todas as mensagens comuns enviadas no servidor'),
@@ -81,84 +81,86 @@ client.on('interactionCreate', async (i) => {
             return await i.reply({ content: '❌ Você não tem permissão para usar os comandos deste bot!', ephemeral: true });
         }
 
+        // Evita o erro de "Aplicativo não respondeu" dando mais tempo para o bot processar
+        await i.deferReply().catch(() => {});
+
         if (i.commandName === 'setup') {
             const cargo = i.options.getRole('cargo');
             if (serverConfig.adminRoles.includes(cargo.id)) {
                 serverConfig.adminRoles = serverConfig.adminRoles.filter(id => id !== cargo.id);
-                return await i.reply(`❌ O cargo **${cargo.name}** foi **removido** da lista de admins do bot.`);
+                return await i.editReply(`❌ O cargo **${cargo.name}** foi **removido** da lista de admins do bot.`);
             } else {
                 serverConfig.adminRoles.push(cargo.id);
-                return await i.reply(`✅ O cargo **${cargo.name}** foi **adicionado** à lista de admins do bot!`);
+                return await i.editReply(`✅ O cargo **${cargo.name}** foi **adicionado** à lista de admins do bot!`);
             }
         }
         
-        // COMANDO /EMBED ATUALIZADO COM FOTO
         if (i.commandName === 'embed') {
             const titulo = i.options.getString('titulo');
             const desc = i.options.getString('descricao');
             const fotoUrl = i.options.getString('foto');
 
-            const embed = new EmbedBuilder()
-                .setTitle(titulo)
-                .setDescription(desc)
-                .setColor('Blue')
-                .setTimestamp();
+            const embed = new EmbedBuilder().setTitle(titulo).setDescription(desc).setColor('Blue').setTimestamp();
 
-            // Se o usuário colocou um link de foto, adiciona ao embed
             if (fotoUrl) {
-                // Uma verificação simples se começa com http para não quebrar o bot
                 if (fotoUrl.startsWith('http://') || fotoUrl.startsWith('https://')) {
                     embed.setImage(fotoUrl);
                 } else {
-                    return await i.reply({ content: '❌ O link da foto precisa começar com `http://` ou `https://`!', ephemeral: true });
+                    return await i.editReply('❌ O link da foto precisa começar com `http://` ou `https://`!');
                 }
             }
-
-            return await i.reply({ embeds: [embed] });
+            return await i.editReply({ embeds: [embed] });
         }
 
         if (i.commandName === 'call') {
             const canal = i.member.voice.channel;
-            if (!canal) return await i.reply('❌ Você precisa estar em um canal de voz!');
+            if (!canal) return await i.editReply('❌ Você precisa estar em um canal de voz!');
             
-            joinVoiceChannel({
-                channelId: canal.id,
-                guildId: canal.guild.id,
-                adapterCreator: canal.guild.voiceAdapterCreator,
-            });
-            return await i.reply(`✅ Entrei no canal de voz **${canal.name}**!`);
+            try {
+                joinVoiceChannel({
+                    channelId: canal.id,
+                    guildId: canal.guild.id,
+                    adapterCreator: canal.guild.voiceAdapterCreator,
+                    selfMute: true, // Totalmente mutado
+                    selfDeaf: true  // Totalmente ensurdecido (economiza dados)
+                });
+                return await i.editReply(`✅ Entrei e fiquei em silêncio no canal de voz **${canal.name}**!`);
+            } catch (err) {
+                console.error(err);
+                return await i.editReply('❌ Ocorreu um erro ao tentar entrar na call.');
+            }
         }
 
         if (i.commandName === 'leave') {
             const connection = getVoiceConnection(i.guild.id);
             if (connection) {
                 connection.destroy();
-                return await i.reply('✅ Saí do canal de voz.');
+                return await i.editReply('✅ Saí do canal de voz.');
             } else {
-                return await i.reply('❌ Eu não estou em nenhum canal de voz.');
+                return await i.editReply('❌ Eu não estou em nenhum canal de voz.');
             }
         }
         
-        if (i.commandName === 'painel') return await i.reply(gerarPainel());
+        if (i.commandName === 'painel') return await i.editReply(gerarPainel());
 
         if (i.commandName === 'stop') {
             serverConfig.modoSilencioso = true;
-            return await i.reply('🚫 **Modo Silencioso ATIVADO!** Mensagens de membros comuns serão apagadas.');
+            return await i.editReply('🚫 **Modo Silencioso ATIVADO!** Mensagens de membros comuns serão apagadas.');
         }
 
         if (i.commandName === 'start') {
             serverConfig.modoSilencioso = false;
-            return await i.reply('✅ **Modo Silencioso DESATIVADO!** O chat foi liberado.');
+            return await i.editReply('✅ **Modo Silencioso DESATIVADO!** O chat foi liberado.');
         }
         
         if (i.commandName === 'banmod') {
             const user = i.options.getUser('usuario');
-            try { await i.guild.members.ban(user); await i.reply(`✅ O usuário ${user.tag} foi banido!`); } catch { await i.reply({ content: '❌ Erro ao banir.', ephemeral: true }); }
+            try { await i.guild.members.ban(user); await i.editReply(`✅ O usuário ${user.tag} foi banido!`); } catch { await i.editReply('❌ Erro ao banir.'); }
         }
         
         if (i.commandName === 'kickmod') {
             const user = i.options.getUser('usuario');
-            try { await i.guild.members.kick(user); await i.reply(`✅ O usuário ${user.tag} foi expulso!`); } catch { await i.reply({ content: '❌ Erro ao expulsar.', ephemeral: true }); }
+            try { await i.guild.members.kick(user); await i.editReply(`✅ O usuário ${user.tag} foi expulso!`); } catch { await i.editReply('❌ Erro ao expulsar.'); }
         }
     }
 
