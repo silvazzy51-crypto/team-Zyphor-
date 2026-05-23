@@ -155,9 +155,9 @@ client.on('interactionCreate', async (i) => {
         }
 
         if (i.commandName === 'blacklistpalavra') {
-            const palavra = i.options.getString('palavra').toLowerCase();
+            const palabra = i.options.getString('palavra').toLowerCase();
             serverConfig.palavrasBloqueadas.push(palavra);
-            return await i.editReply(`✅ Nova palavra adicionada à Blacklist Global pelo desenvolvedor: \`${palavra}\``);
+            return await i.editReply(`Base atualizada! <:codigo:1478184124194881678> Nova palavra adicionada à Blacklist Global pelo desenvolvedor: \`${palavra}\``);
         }
 
         // FIM DOS COMANDOS DE DEV
