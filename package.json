@@ -1,11 +1,16 @@
 {
-  "name": "bot-seguranca",
-  "version": "1.0.0",
+  "name": "zyphor-security",
+  "version": "3.0.0",
+  "description": "Sistema de proteção avançada anti-raid com Ban Global",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "14.14.1"
-  }
-}
+    "discord.js": "^14.14.1",
+    "unidecode": "^0.1.8"
+  },
+  "author": "Team Zyphor",
+  "license": "ISC"
+})
+
