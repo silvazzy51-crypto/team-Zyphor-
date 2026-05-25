@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes } = require
 const unidecode = require('unidecode');
 
 // 📌 INSIRA SUAS CONFIGURAÇÕES PRIVADAS AQUI
-const TOKEN = 'SEU_TOKEN_AQUI';
+const TOKEN ='MTUwNzg3NjY2NjE0NjI5MTc3Mg.Gh2ghz.SCZDTcUFJdfpuUF0PokBdO-AMqwIWfIjhr3nzU';
 const SEU_ID_DE_DEV = 'SEU_ID_DE_DISCORD_AQUI';
 
 const client = new Client({
